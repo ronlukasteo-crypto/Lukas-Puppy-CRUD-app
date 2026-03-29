@@ -9,12 +9,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.SERVER_PORT || process.env.PORT || 5000;
 
-if (!process.env.DB_HOST) {
-  console.warn('Warning: DB_HOST not set in .env');
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  console.warn('Warning: set DATABASE_URL on Render, or DB_* in .env for local dev');
 }
 
 const DB_SCHEMA = process.env.DB_SCHEMA || 'app';
-const useSsl = process.env.PGSSLMODE === 'require';
+const pgSsl =
+  process.env.DATABASE_URL || process.env.PGSSLMODE === 'require'
+    ? { ssl: { require: true, rejectUnauthorized: false } }
+    : undefined;
 
 const ASGARDEO_ORG = process.env.ASGARDEO_ORG || 'orgron';
 const JWKS_URI = `https://api.asgardeo.io/t/${ASGARDEO_ORG}/oauth2/jwks`;
@@ -22,25 +25,19 @@ const JWKS_URI = `https://api.asgardeo.io/t/${ASGARDEO_ORG}/oauth2/jwks`;
 app.use(cors());
 app.use(express.json());
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
-  {
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT) || 5432,
-    dialect: 'postgres',
-    dialectOptions: useSsl
-      ? {
-          ssl: {
-            require: true,
-            rejectUnauthorized: false,
-          },
-        }
-      : undefined,
-    define: { schema: DB_SCHEMA },
-  }
-);
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      dialectOptions: pgSsl,
+      define: { schema: DB_SCHEMA },
+    })
+  : new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT) || 5432,
+      dialect: 'postgres',
+      dialectOptions: pgSsl,
+      define: { schema: DB_SCHEMA },
+    });
 
 const Puppies = sequelize.define(
   'puppies',
